@@ -1,0 +1,66 @@
+---
+title: "Methods"
+author: Thorsten Schilling
+format: 
+  html:
+    self-contained: true
+    code-tools: 
+      source: true
+---
+
+```{r}
+#| echo: false
+#| message: false
+#| warnings: false
+
+## Setup code
+library(targets)
+```
+
+# Methods
+
+## Study area and spatial framework
+
+We worked on mainland Norway, leaving out Svalbard and other high‑Arctic areas (cropped roughly to 4–31°E and 57–72°N). Boundaries came from Natural Earth (via rnaturalearth). These were cropped and projected to UTM Zone 33N (EPSG:25833). A 10 × 10 km grid was laid over the mainland and clipped to the coastline. Each cell was given a unique ID. All spatial work was done in EPSG:25833 to avoid distortions.
+
+## Occurrence data (fungi)
+
+We downloaded GBIF records through the “Get dataset” interface ([https://gbif.org](https://gbif.org)) using: Occurrence status = Present, Years = 1990–2020, Country = Norway, Dataset = Artsdatabanken. We kept only records with species, genus, latitude, and longitude. Coordinates in WGS84 were transformed to UTM Zone 33N before assigning them to grid cells. To avoid bias from small samples we removed cells with fewer than 50 observations. The final dataset contained  cells and  fungal records.
+
+## Guild annotation (FUNGuild)
+
+We used a local JSON dump of the FUNGuild database, cleaned of HTML wrappers. Only genus‑level entries were kept (TODO: to be confirmed with FUNGuild/MycoBank) and records with a “Possible” confidence ranking were dropped, leaving Probable and Highly Probable ones. When more than one guild was listed for a taxon, the primary guild (marked by pipe symbols) was used. Pipe characters were removed and whitespace trimmed.
+
+At grid level, we counted records per guild to form a guild matrix. All saprotroph subgroups were summed into one Saprotroph class. Groups with very few records (Epiphyte, Endophyte, Pathogen, Parasite) were left out of our analysis because of the low incidence in the occurence data. Row totals were standardized with the vegan package (function `decostand`, method = "total"), so each cell summed to 1. This gave the fraction of records per guild (Saprotroph, Ectomycorrhizal, Lichenized).
+
+## Diversity metric (α‑diversity)
+
+We built a genus‑by‑grid community matrix. To correct for uneven sampling effort we used individual‑based rarefaction with the vegan package (function `rarefy`), set to 50 observations. This gave comparable α‑diversity values across cells, expressed as a fraction.
+
+## Environmental predictors
+
+### Climate
+
+Climate normals came from seNorge2018 ([https://github.com/metno/seNorge_docs/wiki/seNorge_2018](https://github.com/metno/seNorge_docs/wiki/seNorge_2018)): total annual precipitation and mean annual temperature. We handled rasters with terra. Data were projected to EPSG:25833 with bilinear resampling (terra::project) and averaged for each 10 km cell (terra::extract, mean). This gave annual precipitation and mean temperature per cell.
+
+### Land cover
+
+We used CORINE Land Cover 2018 (CLC2018) and processed rasters with terra. Data were reprojected to EPSG:25833 using nearest‑neighbour resampling. Class counts per 10 km cell were extracted with terra::extract using a fixed‑length tabulation function. These counts were then grouped into five classes and converted to fractions:
+
+* Urban: 111, 112, 121, 122, 123, 124, 131, 132, 133, 141, 142
+* Agriculture: 211, 231, 242, 243
+* Forest: 311, 312, 313
+* Heathland / marsh / sparse / peat bogs: 322, 324, 333, 411, 412
+* Bare rock / water / diverse: 331, 332, 511, 512, 532 …
+
+Fractions were calculated as the share of each class relative to the total mapped area in the cell. 
+
+## Data assembly and scaling
+
+All per‑cell data (guild fractions, α‑diversity, climate, land cover) were combined. Climate variables were min–max scaled to 0–1. α‑diversity was divided by 50, also giving values in the interval 0–1. Land‑cover was already in fractions.
+
+## Statistical analysis
+
+We modelled the fraction of each fungal guild (Saprotroph, Lichenized, Ectomycorrhizal) using beta regression with a logit link (betareg package). Predictors were α‑diversity, scaled climate variables, and land‑cover fractions. Because guild fractions cover to 1 they were not treated as predictors. Similarly land cover fractions sum to 1, so the category containting bare rock, water, and diverse were excluded. Coefficients are interpreted relative to this baseline. 
+
+We calculated average marginal effects (AMEs) with the marginaleffects package (function `avg_slopes`), reporting the average change in the response (fraction scale) for a unit change across each predictor’s 0–1 range. In some cases we also report per‑0.01 changes. Model fit was checked with randomized quantile residuals (betareg), observed vs. predicted comparisons, and pseudo‑R² (<specify McFadden, Cragg–Uhler/Nagelkerke, or Efron>).
